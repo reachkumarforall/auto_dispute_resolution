@@ -59,6 +59,7 @@ INLINE_DATABASE_SCHEMA = '''
         invoice_date DATE,
         amount NUMBER(10, 2) NOT NULL,
         currency_code VARCHAR2(3) NOT NULL, -- Renamed from CURRENCY
+        product VARCHAR2(50),
         CONSTRAINT fk_trans_customer FOREIGN KEY (account_number) REFERENCES Customers(account_number)
     );
 
@@ -68,6 +69,7 @@ INLINE_DATABASE_SCHEMA = '''
         usage_date DATE,
         envelope_count NUMBER, -- Renamed from USAGE
         usage_notes VARCHAR2(255),
+        product VARCHAR2(50),        
         CONSTRAINT fk_usage_customer FOREIGN KEY (account_number) REFERENCES Customers(account_number)
     );
 
@@ -105,6 +107,7 @@ INLINE_TABLE_COLUMN_DESCRIPTION = '''
     - "account_number": Links the transaction to a customer in the Customers table.
     - "invoice_date": The date the transaction was invoiced.
     - "amount": The monetary value of the transaction.
+    - "product": The product or service associated with the transaction.
     - "currency_code": The three-letter currency code for the amount (e.g., 'USD', 'EUR').
 
     AccountUsage table:
@@ -113,6 +116,7 @@ INLINE_TABLE_COLUMN_DESCRIPTION = '''
     - "account_number": Links the usage record to a customer.
     - "usage_date": The date the usage was recorded.
     - "envelope_count": The number of eSign envelopes used by the customer.
+    - "product": The product or service associated with the usage.
     - "usage_notes": Comments about the customer's activity, such as 'No Logged In' or 'Recent Usage'.
 
     Disputes table:

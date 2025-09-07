@@ -28,7 +28,7 @@ def resolve_dispute(user_dispute_prompt: str):
     """
     Orchestrates the dispute resolution workflow, yielding updates at each step.
     """
-    # --- NEW: Step 1 - Classify the issue type ---
+    # --- Step 1 - Classify the issue type ---
     classification = run_classification_query(user_dispute_prompt)
     yield {
         "step_name": "Classification Agent: Issue Type",
@@ -36,21 +36,21 @@ def resolve_dispute(user_dispute_prompt: str):
         "is_final": False
     }
 
-    # Step 2: Call RAG agent
+    # --- Step 2 - Get all customer data from DB ---
+    # We now pass the classification to the DB agent
+    transaction_data = run_db_query(user_dispute_prompt, classification)
+    yield {
+        "step_name": "DB Agent: Customer Data",
+        "data": transaction_data,
+        "is_final": False
+    }
+
+    # --- Step 3 - Call RAG agent ---
     t_and_c_query = "What are the terms and conditions for refunds and cancellations?"
     terms_and_conditions = run_rag_query(t_and_c_query)
     yield {
         "step_name": "RAG Agent: Terms & Conditions",
         "data": terms_and_conditions,
-        "is_final": False
-    }
-
-    # Step 3: Call DB agent
-    # --- MODIFIED: Pass both the user prompt and the classification to the DB agent ---
-    transaction_data = run_db_query(user_dispute_prompt, classification)
-    yield {
-        "step_name": "DB Agent: Customer Data",
-        "data": transaction_data,
         "is_final": False
     }
 

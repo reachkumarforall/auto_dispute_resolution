@@ -23,6 +23,7 @@ Your goal is to extract the `account_number` and `transaction_number` from the u
 - Always retrieve recent usage from the `AccountUsage` table for the given account number.
 - Always retrieve recent transactions from the `Transactions` table for the given account number.
 - Return the retrieved data in a clear, summarized text format.
+- **Your final output MUST be a single JSON object with three keys: "user_info", "account_usage", and "transactions". Each key should contain a summary of the data found for that category.**
 """
 
 # ----------------------------------------------------------------------------
