@@ -37,9 +37,9 @@ load_dotenv(PROJECT_ROOT / "config/.env")  # expects OCI_ vars in .env
 # Set up the OCI GenAI Agents endpoint configuration
 OCI_CONFIG_FILE = os.getenv("OCI_CONFIG_FILE")
 OCI_PROFILE = os.getenv("OCI_PROFILE")
-AGENT_EP_ID = os.getenv("AGENT_EP_ID")
-AGENT_SERVICE_EP = os.getenv("AGENT_SERVICE_EP")
 AGENT_REGION = os.getenv("AGENT_REGION")
+AGENT_SERVICE_EP = os.getenv("AGENT_SERVICE_EP")
+DB_AGENT_EP_ID = os.getenv("DB_AGENT_EP_ID")
 
 
 INLINE_DATABASE_SCHEMA = '''
@@ -110,7 +110,7 @@ def agent_flow():
 
     agent = Agent(
         client=client,
-        agent_endpoint_id=AGENT_EP_ID,
+        agent_endpoint_id=DB_AGENT_EP_ID,
         instructions=instructions,
         tools=[
             sql_tool_with_inline_schema

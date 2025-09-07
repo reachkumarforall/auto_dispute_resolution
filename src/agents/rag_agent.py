@@ -37,11 +37,10 @@ load_dotenv(PROJECT_ROOT / "config/.env")  # expects OCI_ vars in .env
 # Set up the OCI GenAI Agents endpoint configuration
 OCI_CONFIG_FILE = os.getenv("OCI_CONFIG_FILE")
 OCI_PROFILE = os.getenv("OCI_PROFILE")
-AGENT_EP_ID = os.getenv("AGENT_EP_ID")
-AGENT_SERVICE_EP = os.getenv("AGENT_SERVICE_EP")
-TAX_AGENT_KB_ME_ID = os.getenv("TAX_AGENT_KB_ME_ID")
-TAX_AGENT_KB_BUS_ID = os.getenv("TAX_AGENT_KB_BUS_ID")
 AGENT_REGION = os.getenv("AGENT_REGION")
+AGENT_SERVICE_EP = os.getenv("AGENT_SERVICE_EP")
+RAG_AGENT_EP_ID = os.getenv("RAG_AGENT_EP_ID")
+RAG_AGENT_KB_TERMS_AND_CONDITIONS = os.getenv("RAG_AGENT_KB_TERMS_AND_CONDITIONS")
 
 
 # ────────────────────────────────────────────────────────
@@ -57,17 +56,16 @@ def agent_flow():
     )
 
     # instructions = prompt_Agent_Auditor # Assign the right topic
-    instructions = "You are an agent that retrieves answers from the policy documents and flight data. Also try to get answers from the policy document" # Assign the right topic
+    instructions = (f"You are an agent that retrieves answers from the policy documents. " 
+                    f"Also try to answer the question the policy documents only") # Assign the right topic
     custom_instructions = (f"Use the tools to execute RAG search")
-    # custom_instructions = (
-    #     f"response with not more than 10 words. Hide any PHI information from sending back to the user")
-
+    
     agent = Agent(
         client=client,
-        agent_endpoint_id=AGENT_EP_ID,
+        agent_endpoint_id=RAG_AGENT_EP_ID,
         instructions=instructions,
         tools=[
-            AgenticRagTool(knowledge_base_ids=[TAX_AGENT_KB_ME_ID], description=custom_instructions),
+            AgenticRagTool(knowledge_base_ids=[RAG_AGENT_KB_TERMS_AND_CONDITIONS], description=custom_instructions),
         ]
     )
 
@@ -83,7 +81,7 @@ def setup_agent():
     client_provided_context = "[Context: The logged in user ID is: user_123] "
 
     # Call the RAG Service
-    input = "“give me policies on terms and conditions”"
+    input = "give me policies on terms and conditions"
     response = agent.run(input)
     final_message = response.data["message"]["content"]["text"]
     print(final_message)
