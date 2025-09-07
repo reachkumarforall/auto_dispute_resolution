@@ -16,18 +16,15 @@ from typing import Dict
 from pathlib import Path
 from dotenv import load_dotenv
 import logging
+import asyncio
 
-from oci.addons.adk import Agent, AgentClient
-from oci.addons.adk.run.types import InlineInputLocation, ObjectStorageInputLocation
-from oci.addons.adk.tool.prebuilt.agentic_sql_tool import AgenticSqlTool, SqlDialect, ModelSize
 from oci.addons.adk import Agent, AgentClient, tool
 from oci.addons.adk.tool.prebuilt import AgenticRagTool
 
-from src.prompts.prompts import prompt_Agent_Auditor
 # ────────────────────────────────────────────────────────
 # 1) bootstrap paths + env + llm
 # ────────────────────────────────────────────────────────
-logging.getLogger('adk').setLevel(logging.DEBUG)
+logging.getLogger('adk').setLevel(logging.INFO)
 
 THIS_DIR     = Path(__file__).resolve()
 PROJECT_ROOT = THIS_DIR.parent.parent.parent
@@ -75,11 +72,19 @@ def agent_flow():
 def run_rag_query(query: str) -> str:
     """
     Initializes and runs the RAG agent for a given query.
+    Handles asyncio event loop for Streamlit compatibility.
     """
+    # --- FIX for Streamlit's threading ---
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    # ------------------------------------
+
     agent = agent_flow()
     agent.setup()
     response = agent.run(query)
-    # Assuming the response structure is consistent
     final_message = response.data["message"]["content"]["text"]
     return final_message
 

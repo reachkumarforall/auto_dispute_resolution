@@ -1,4 +1,5 @@
 import os
+import asyncio
 from dotenv import load_dotenv
 from pathlib import Path
 from oci.addons.adk import Agent, AgentClient
@@ -34,7 +35,16 @@ def build_agent():
 def run_llm_decision(query: str) -> str:
     """
     Initializes and runs the LLM agent for a given query.
+    Handles asyncio event loop for Streamlit compatibility.
     """
+    # --- FIX for Streamlit's threading ---
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    # ------------------------------------
+
     agent = build_agent()
     agent.setup()
     response = agent.run(query)
