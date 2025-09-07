@@ -71,23 +71,23 @@ def agent_flow():
 
     return agent
 
-
-def setup_agent():
-
+# NEW function that can be imported by the workflow
+def run_rag_query(query: str) -> str:
+    """
+    Initializes and runs the RAG agent for a given query.
+    """
     agent = agent_flow()
     agent.setup()
-
-    # This is a context your existing code is best at producing (e.g., fetching the authenticated user id)
-    client_provided_context = "[Context: The logged in user ID is: user_123] "
-
-    # Call the RAG Service
-    input = "give me policies on terms and conditions"
-    response = agent.run(input)
+    response = agent.run(query)
+    # Assuming the response structure is consistent
     final_message = response.data["message"]["content"]["text"]
-    print(final_message)
- 
-    # Print Response Traces
-    response.pretty_print_traces()
+    return final_message
 
+# MODIFIED main block for standalone testing
 if __name__ == "__main__":
-    setup_agent()
+    # This part now calls the new function
+    test_query = "give me policies on terms and conditions"
+    print("--- Testing RAG Agent ---")
+    response_text = run_rag_query(test_query)
+    print("\n--- RAG Agent Response ---")
+    print(response_text)

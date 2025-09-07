@@ -120,22 +120,24 @@ def agent_flow():
     return agent
 
 
-def setup_agent():
+def db_agent_flow():
+    return agent_flow()
 
-    agent = agent_flow()
+# NEW function that can be imported by the workflow
+def run_db_query(query: str) -> str:
+    """
+    Initializes and runs the DB agent for a given query.
+    """
+    agent = db_agent_flow()
     agent.setup()
+    response = agent.run(query)
+    final_message = response.data["message"]["content"]["text"]
+    return final_message
 
-    # This is a context your existing code is best at producing (e.g., fetching the authenticated user id)
-    client_provided_context = "[Context: The logged in user ID is: user_123] "
-
-    # Run the agent with a user message
-    # input = "Find me flights from New York to Los Angeles"
-    input = "Find me flights from New York to Los Angeles"
-    response = agent.run(input)
-    response.pretty_print()
- 
-    # Print Response Traces
-    response.pretty_print_traces()
-
+# MODIFIED main block for standalone testing
 if __name__ == "__main__":
-    setup_agent()
+    test_query = "Find transaction and usage history for account number 5931479520"
+    print("--- Testing DB Agent ---")
+    response_text = run_db_query(test_query)
+    print("\n--- DB Agent Response ---")
+    print(response_text)

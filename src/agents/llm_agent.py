@@ -31,16 +31,19 @@ def build_agent():
     )
     return agent
 
-def run_llm(query: str):
+def run_llm_decision(query: str) -> str:
+    """
+    Initializes and runs the LLM agent for a given query.
+    """
     agent = build_agent()
     agent.setup()
-    resp = agent.run(query)
-    text = resp.data["message"]["content"]["text"]
-    print("=== LLM Response ===")
-    print(text)
-    # Optional: resp.pretty_print_traces()
-    return text
+    response = agent.run(query)
+    final_message = response.data["message"]["content"]["text"]
+    return final_message
 
 if __name__ == "__main__":
-    user_query = "Summarize why email soft bounces happen."
-    run_llm(user_query)
+    test_query = "Is the sky blue?"
+    print("--- Testing LLM Agent ---")
+    response_text = run_llm_decision(test_query)
+    print("\n--- LLM Agent Response ---")
+    print(response_text)
