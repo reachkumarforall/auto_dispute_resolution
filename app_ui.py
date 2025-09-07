@@ -2,7 +2,6 @@ import streamlit as st
 import sys
 from pathlib import Path
 import json
-import time
 import pandas as pd
 
 # --- Add project root to path to allow imports ---
@@ -14,8 +13,40 @@ from src.workflows.dispute_resolution_workflow import resolve_dispute
 
 # --- Streamlit Page Configuration ---
 st.set_page_config(page_title="Auto Dispute Resolution", layout="wide")
+
+# --- Custom CSS for colored status boxes ---
+st.markdown("""
+<style>
+    /* Base style for the status box */
+    .status-box {
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        padding: 10px;
+        text-align: center;
+        color: black !important; /* Ensure text is black */
+    }
+    /* Colors for each status */
+    .status-pending { background-color: #f0f2f6; } /* Light Grey */
+    .status-in-progress { background-color: #ffecb3; } /* Darker Yellow */
+    .status-completed { background-color: #c8e6c9; } /* Darker Green */
+    .status-action-required { background-color: #ffcdd2; } /* Darker Red */
+</style>
+""", unsafe_allow_html=True)
+
 st.title("🤖 Automated Dispute Resolution System")
 st.markdown("Enter a customer dispute below to begin the analysis workflow. The system will use multiple AI agents to gather context and recommend a decision.")
+
+# --- Sidebar Configuration ---
+st.sidebar.title("Configuration")
+approval_threshold = st.sidebar.number_input(
+    "Human Approval Threshold ($)",
+    min_value=0,
+    value=100,
+    step=50,
+    help="Refunds recommended by the AI above this value will require manual approval."
+)
+st.sidebar.button("Reset Page", on_click=st.rerun, use_container_width=True, type="primary")
+
 
 # --- UI Elements ---
 default_prompt = """
@@ -28,12 +59,12 @@ The reference transaction number: P-1234567890 Account Number: 5931479520
 user_prompt = st.text_area("Customer Dispute Prompt:", value=default_prompt, height=250)
 
 # --- Define Agent Steps for the Visual Flow ---
-# --- MODIFIED: Reordered steps to match the new workflow ---
 AGENT_STEPS = {
     "Classification Agent: Issue Type": "1. Classify Issue",
     "DB Agent: Customer Data": "2. Get Account Data",
     "RAG Agent: Terms & Conditions": "3. Fetch Policies",
-    "LLM Agent: Final Decision": "4. Generate Decision"
+    "LLM Agent: Final Decision": "4. Generate Decision",
+    "Human Approval Required": "5. Human Approval"
 }
 AGENT_STEP_NAMES = list(AGENT_STEPS.keys())
 
@@ -41,146 +72,145 @@ if st.button("Analyze Dispute"):
     if not user_prompt.strip():
         st.error("Please enter a dispute prompt.")
     else:
-        # --- Create placeholders for progress boxes and agent output ---
+        # --- Create placeholders for all UI elements first ---
         st.subheader("Workflow Progress")
         progress_cols = st.columns(len(AGENT_STEPS))
         progress_boxes = {}
-
-        # --- NEW: Create placeholders for the data tables ---
-        st.subheader("Live Data Feed")
-        table_cols = st.columns(3)
-        with table_cols[0]:
-            st.markdown("##### User Info")
-            st.divider()
-            user_info_placeholder = st.empty()
-            user_info_placeholder.markdown("*Waiting for data...*")
-        with table_cols[1]:
-            st.markdown("##### Account Usage")
-            st.divider()
-            usage_placeholder = st.empty()
-            usage_placeholder.markdown("*Waiting for data...*")
-        with table_cols[2]:
-            st.markdown("##### Transactions")
-            st.divider()
-            transactions_placeholder = st.empty()
-            transactions_placeholder.markdown("*Waiting for data...*")
-
-        # --- MODIFIED: Initialize progress boxes with placeholders for status text ---
         for i, (step_name, label) in enumerate(AGENT_STEPS.items()):
             with progress_cols[i]:
-                box_container = st.container(border=True)
-                box_container.markdown(f"**{label}**")
-                status_placeholder = box_container.empty() # Create a placeholder for the status
-                status_placeholder.markdown("⚪ Pending")
-                progress_boxes[step_name] = status_placeholder # Store the placeholder itself
+                progress_boxes[step_name] = st.empty()
+                progress_boxes[step_name].markdown(
+                    f'<div class="status-box status-pending"><b>{label}</b><br>⚪ Pending</div>',
+                    unsafe_allow_html=True
+                )
+
+        st.subheader("Live Data Feed")
+        st.markdown("<div style='margin-top: -10px;'></div>", unsafe_allow_html=True)
+        table_cols = st.columns(3)
+        placeholders = {}
+        data_labels = ["User Info", "Account Usage", "Transactions"]
+        for i, label in enumerate(data_labels):
+            with table_cols[i]:
+                st.markdown(f"##### {label}")
+                st.divider()
+                placeholders[label] = st.empty()
+                placeholders[label].markdown("*Waiting for data...*")
+        
+        user_info_placeholder = placeholders["User Info"]
+        usage_placeholder = placeholders["Account Usage"]
+        transactions_placeholder = placeholders["Transactions"]
 
         st.subheader("Agent Output Log")
         output_container = st.container()
+        final_decision_placeholder = st.empty()
         final_decision = {}
-        
+
+        # --- Main workflow execution and display area ---
         try:
-            # --- Iterate through the workflow and update the UI ---
-            for i, result in enumerate(resolve_dispute(user_prompt)):
-                current_step_name = result["step_name"]
-                data = result["data"]
-                is_final = result["is_final"]
+            with st.spinner("Analyzing dispute..."):
+                for i, result in enumerate(resolve_dispute(user_prompt, approval_threshold)):
+                    current_step_name = result["step_name"]
+                    data = result["data"]
+                    is_final = result["is_final"]
+                    current_label = AGENT_STEPS.get(current_step_name, "")
 
-                # --- MODIFIED: Update the placeholder's content directly ---
-                # Update current step to "In Progress" (Yellow)
-                progress_boxes[current_step_name].markdown("🟡 In Progress...")
+                    # Update current step to "In Progress"
+                    if current_step_name in progress_boxes:
+                        progress_boxes[current_step_name].markdown(
+                            f'<div class="status-box status-in-progress"><b>{current_label}</b><br>🟡 In Progress...</div>',
+                            unsafe_allow_html=True
+                        )
 
-                # Update previous step to "Completed" (Green)
-                if i > 0:
-                    previous_step_name = AGENT_STEP_NAMES[i-1]
-                    progress_boxes[previous_step_name].markdown("✅ Completed")
-                
-                # --- Populate tables when DB Agent finishes ---
-                if current_step_name == "DB Agent: Customer Data":
-                    try:
-                        # Find the start and end of the JSON block
-                        json_start = data.find('{')
-                        json_end = data.rfind('}') + 1
-                        
-                        if json_start != -1 and json_end != 0:
-                            cleaned_json_str = data[json_start:json_end]
-                            db_data = json.loads(cleaned_json_str)
-
-                            # --- MODIFIED: Clear placeholders and display data as tables ---
-                            user_info_placeholder.empty()
-                            usage_placeholder.empty()
-                            transactions_placeholder.empty()
-
-                            # Display User Info
-                            user_info = db_data.get("user_info")
-                            if user_info:
-                                user_df = pd.DataFrame([user_info])
-                                user_info_placeholder.dataframe(user_df, use_container_width=True, hide_index=True)
+                    # Update previous step to "Completed"
+                    if i > 0:
+                        previous_step_name = AGENT_STEP_NAMES[i-1]
+                        previous_label = AGENT_STEPS.get(previous_step_name, "")
+                        if previous_step_name in progress_boxes:
+                            progress_boxes[previous_step_name].markdown(
+                                f'<div class="status-box status-completed"><b>{previous_label}</b><br>✅ Completed</div>',
+                                unsafe_allow_html=True
+                            )
+                    
+                    # Populate tables when DB Agent finishes
+                    if current_step_name == "DB Agent: Customer Data":
+                        try:
+                            json_start = data.find('{')
+                            json_end = data.rfind('}') + 1
+                            if json_start != -1:
+                                db_data = json.loads(data[json_start:json_end])
+                                user_info_placeholder.dataframe(pd.DataFrame([db_data.get("user_info")]), hide_index=True, use_container_width=True)
+                                usage_placeholder.dataframe(pd.DataFrame([db_data.get("account_usage")]), hide_index=True, use_container_width=True)
+                                trans_list = db_data.get("transactions", [])
+                                transactions_placeholder.dataframe(pd.DataFrame(trans_list if isinstance(trans_list, list) else [trans_list]), hide_index=True, use_container_width=True)
                             else:
-                                user_info_placeholder.markdown("*Not found.*")
-                            
-                            # Display Account Usage
-                            account_usage = db_data.get("account_usage")
-                            if account_usage:
-                                usage_df = pd.DataFrame([account_usage])
-                                usage_placeholder.dataframe(usage_df, use_container_width=True, hide_index=True)
-                            else:
-                                usage_placeholder.markdown("*Not found.*")
+                                user_info_placeholder.markdown("*Could not parse DB Agent output.*")
+                        except (json.JSONDecodeError, AttributeError):
+                            user_info_placeholder.markdown("*Error displaying DB data.*")
+                    
+                    # Handle Human Approval Step
+                    if current_step_name == "Human Approval Required":
+                        progress_boxes[current_step_name].markdown(
+                            f'<div class="status-box status-action-required"><b>{current_label}</b><br>⚠️ Action Required</div>',
+                            unsafe_allow_html=True
+                        )
+                        with final_decision_placeholder.container():
+                            st.warning("Human approval required for high-value refund.")
+                            amount = data.get('dispute_amount', 'N/A')
+                            amount_str = f"${amount:,.2f}" if isinstance(amount, (int, float)) else str(amount)
+                            approval_df = pd.DataFrame({
+                                "Metric": ["Refund Amount", "AI Recommendation", "Reason", "Suggested Action"],
+                                "Value": [amount_str, data.get('dispute_status'), data.get('reason'), data.get('recommended_action')]
+                            })
+                            st.table(approval_df.set_index("Metric"))
+                            btn_cols = st.columns(2)
+                            if btn_cols[0].button("✅ Approve Refund", use_container_width=True):
+                                final_decision = {"dispute_status": "Accepted (Human Approved)", "reason": "Refund approved by operator.", "recommended_action": "Refund has been processed."}
+                                break
+                            if btn_cols[1].button("❌ Reject Refund", use_container_width=True):
+                                final_decision = {"dispute_status": "Rejected (Human Override)", "reason": "Refund rejected by operator.", "recommended_action": "No further action required."}
+                                break
+                    
+                    # Display agent output log
+                    with output_container:
+                        with st.expander(f"Output from: **{current_step_name}**", expanded=False):
+                            st.json(data)
 
-                            # Display Transactions
-                            transactions = db_data.get("transactions")
-                            if transactions:
-                                # Ensure transactions is a list for DataFrame compatibility
-                                trans_list = transactions if isinstance(transactions, list) else [transactions]
-                                trans_df = pd.DataFrame(trans_list)
-                                transactions_placeholder.dataframe(trans_df, use_container_width=True, hide_index=True)
-                            else:
-                                transactions_placeholder.markdown("*Not found.*")
-                        else:
-                            raise json.JSONDecodeError("No JSON object found in string", data, 0)
+                    if is_final:
+                        final_decision = data
+                        final_label = AGENT_STEPS.get("LLM Agent: Final Decision", "")
+                        progress_boxes["LLM Agent: Final Decision"].markdown(
+                            f'<div class="status-box status-completed"><b>{final_label}</b><br>✅ Completed</div>',
+                            unsafe_allow_html=True
+                        )
 
-                    except (json.JSONDecodeError, AttributeError, TypeError):
-                        # Fallback if the agent doesn't return clean JSON
-                        user_info_placeholder.markdown("*Could not parse DB Agent output.*")
-                        usage_placeholder.empty()
-                        transactions_placeholder.empty()
+            # --- Display Final Decision ---
+            if final_decision:
+                with final_decision_placeholder.container():
+                    status = final_decision.get("dispute_status", "Unknown")
+                    if "Accepted" in status:
+                        st.success(f"**Final Decision: {status}**")
+                    elif "Rejected" in status:
+                        st.error(f"**Final Decision: {status}**")
+                    else:
+                        st.info(f"**Final Decision: {status}**")
+                    
+                    decision_df = pd.DataFrame({
+                        "Metric": ["Reason", "Recommended Action"],
+                        "Value": [final_decision.get('reason'), final_decision.get('recommended_action')]
+                    })
+                    st.table(decision_df.set_index("Metric"))
 
-
-                # Display agent output log
-                with output_container:
-                    with st.expander(f"Output from: **{current_step_name}**", expanded=True):
-                        st.text(data) # Display raw text output here
-                
-                time.sleep(1) # Visual delay
-
-                if is_final:
-                    # Mark the final step as "Completed"
-                    progress_boxes[current_step_name].markdown("✅ Completed")
-                    final_decision = json.loads(data) if isinstance(data, str) else data
-                    break
+                    # Mark all steps as complete
+                    for step_name, label in AGENT_STEPS.items():
+                        if step_name in progress_boxes:
+                            # Don't mark human approval as complete if it wasn't the path taken
+                            if step_name == "Human Approval Required" and "Human" not in status:
+                                continue
+                            progress_boxes[step_name].markdown(
+                                f'<div class="status-box status-completed"><b>{label}</b><br>✅ Completed</div>',
+                                unsafe_allow_html=True
+                            )
         
         except Exception as e:
             st.error(f"An error occurred during the workflow: {e}")
             st.exception(e)
-
-        # --- Display the final, summarized decision ---
-        if final_decision:
-            st.subheader("Final Decision Summary")
-            status_val = final_decision.get("dispute_status", "N/A")
-            reason = final_decision.get("reason", "N/A")
-            action = final_decision.get("recommended_action", "N/A")
-
-            if status_val.lower() == "accepted":
-                st.success(f"**Status:** {status_val}")
-            else:
-                st.error(f"**Status:** {status_val}")
-
-            st.info(f"**Reason:** {reason}")
-            st.warning(f"**Recommended Action:** {action}")
-
-# --- Instructions in Sidebar ---
-st.sidebar.title("How to Use")
-st.sidebar.info(
-    "1. **Enter the dispute:** Paste the full text of the customer's complaint.\n\n"
-    "2. **Click Analyze:** Watch the workflow progress and see live data populate.\n\n"
-    "3. **Review the output:** The final decision is summarized at the end."
-)

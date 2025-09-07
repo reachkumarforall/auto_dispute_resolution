@@ -24,7 +24,7 @@ from src.agents.llm_agent import run_llm_decision
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(BASE_DIR / "config/.env")
 
-def resolve_dispute(user_dispute_prompt: str):
+def resolve_dispute(user_dispute_prompt: str, approval_threshold: float = 500.0):
     """
     Orchestrates the dispute resolution workflow, yielding updates at each step.
     """
@@ -38,10 +38,10 @@ def resolve_dispute(user_dispute_prompt: str):
 
     # --- Step 2 - Get all customer data from DB ---
     # We now pass the classification to the DB agent
-    transaction_data = run_db_query(user_dispute_prompt, classification)
+    transaction_data_str = run_db_query(user_dispute_prompt, classification)
     yield {
         "step_name": "DB Agent: Customer Data",
-        "data": transaction_data,
+        "data": transaction_data_str,
         "is_final": False
     }
 
@@ -59,7 +59,7 @@ def resolve_dispute(user_dispute_prompt: str):
         "user_dispute": user_dispute_prompt,
         "issue_classification": classification, # Include the classification
         "terms_and_conditions": terms_and_conditions,
-        "customer_data": transaction_data
+        "customer_data": transaction_data_str
     }
     dispute_json = json.dumps(dispute_context, indent=2)
     
@@ -87,12 +87,54 @@ def resolve_dispute(user_dispute_prompt: str):
     except json.JSONDecodeError:
         final_decision = {"raw_response": final_decision_str}
 
-    # Step 5: Yield the final decision
-    yield {
-        "step_name": "LLM Agent: Final Decision",
-        "data": final_decision,
-        "is_final": True
-    }
+    # --- Step 5: Check for Human-in-the-Loop condition ---
+    dispute_amount = 0
+    try:
+        # Attempt to parse the transaction data to find the amount
+        json_start = transaction_data_str.find('{')
+        json_end = transaction_data_str.rfind('}') + 1
+        if json_start != -1 and json_end != 0:
+            db_data = json.loads(transaction_data_str[json_start:json_end])
+            transactions = db_data.get("transactions", [])
+            
+            # --- MODIFIED: Handle both list and dict for transactions ---
+            if transactions:
+                # If it's a dictionary, treat it as a single transaction in a list
+                if isinstance(transactions, dict):
+                    transactions = [transactions]
+                
+                # Now safely access the first transaction
+                if transactions: # Check again in case it was an empty dict originally
+                    dispute_amount = float(transactions[0].get("amount", 0))
+
+    except (json.JSONDecodeError, ValueError, TypeError):
+        dispute_amount = 0 # Default to 0 if parsing fails
+
+    # --- DEBUG: Print values before the human-in-the-loop check ---
+    print("\n--- HUMAN-IN-THE-LOOP CHECK ---")
+    print(f"Dispute Amount: {dispute_amount}")
+    print(f"Approval Threshold: {approval_threshold}")
+    print(f"AI Decision Status: {final_decision.get('dispute_status')}")
+    print("---------------------------------\n")
+
+    # If AI accepts a refund over the threshold, ask for human approval
+    if final_decision.get("dispute_status") == "Accepted" and dispute_amount > approval_threshold:
+        # --- MODIFIED: Add dispute amount to the data payload for the UI ---
+        approval_data = final_decision.copy()
+        approval_data['dispute_amount'] = dispute_amount
+        
+        yield {
+            "step_name": "Human Approval Required",
+            "data": approval_data, # Pass the AI recommendation and the amount
+            "is_final": False # Not final until a human decides
+        }
+    else:
+        # Otherwise, yield the final decision directly
+        yield {
+            "step_name": "LLM Agent: Final Decision",
+            "data": final_decision,
+            "is_final": True
+        }
 
 
 if __name__ == "__main__":
@@ -104,8 +146,8 @@ if __name__ == "__main__":
     The reference transaction number: P-1234567890 Account Number: 5931479520
     """
 
-    # Run the workflow
-    for update in resolve_dispute(sample_dispute):
+    # Run the workflow with a sample threshold
+    for update in resolve_dispute(sample_dispute, approval_threshold=400.0):
         print(f"\n--- {update['step_name']} ---")
         print(json.dumps(update, indent=2))
 

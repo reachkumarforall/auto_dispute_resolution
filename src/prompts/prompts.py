@@ -41,7 +41,7 @@ DB_AGENT_PROMPTS_BY_CLASSIFICATION = {
 
     "Issues with Subscription Cancellation": """
     The user claims they tried to cancel but were still charged.
-    1.  Using the account number, query the `Disputes` table for any past cancellation requests or related communication.
+    1.  Using the account number, query the `AccountUsage` and `Transactions` table for usage.
     2.  Using the transaction number, retrieve the details of the disputed charge from the `Transactions` table, paying close attention to the `invoice_date`.
     3.  Query the `AccountUsage` table to see if there was any service usage after the alleged cancellation date.
     Summarize your findings.
