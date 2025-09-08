@@ -14,6 +14,8 @@ import json
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+import time
+import logging
 
 # --- MODIFIED: Import the new classification agent ---
 from src.agents.classification_agent import run_classification_query
@@ -138,6 +140,12 @@ def resolve_dispute(user_dispute_prompt: str, approval_threshold: float = 500.0)
 
 
 if __name__ == "__main__":
+    # Configure basic logging to print to the terminal
+    logging.basicConfig(
+        level=logging.INFO, 
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+
     # Example user dispute from your CSV file
     sample_dispute = """
     This is an unauthorized transaction for a service I never signed up for.
@@ -146,9 +154,47 @@ if __name__ == "__main__":
     The reference transaction number: P-1234567890 Account Number: 5931479520
     """
 
-    # Run the workflow with a sample threshold
-    for update in resolve_dispute(sample_dispute, approval_threshold=400.0):
-        print(f"\n--- {update['step_name']} ---")
-        print(json.dumps(update, indent=2))
+    logging.info("="*50)
+    logging.info("Starting Dispute Resolution Workflow...")
+    logging.info("="*50)
 
-    print("\n--- Dispute Resolution Complete ---")
+    # --- MODIFIED: Timing logic implementation ---
+    workflow_start_time = time.time()
+    step_timings = {}
+    
+    # The generator needs to be consumed to execute.
+    for step_result in resolve_dispute(sample_dispute, approval_threshold=400.0):
+        step_end_time = time.time()
+        
+        # Unpack the result from the generator
+        step_name = step_result.get("step_name")
+        result_data = step_result.get("data")
+        is_final = step_result.get("is_final")
+
+        # The time for this step is the total time elapsed since the start, minus time for previous steps
+        step_duration = (step_end_time - workflow_start_time) - sum(step_timings.values())
+        step_timings[step_name] = step_duration
+
+        logging.info(f"\n--- Output from: {step_name} ---\n{json.dumps(result_data, indent=2)}")
+        
+        if is_final:
+            logging.info("\n--- Final Decision Reached ---")
+            break # Stop after the final decision is made
+    
+    workflow_end_time = time.time()
+    total_workflow_time = workflow_end_time - workflow_start_time
+    
+    # Building the summary string for a single log entry
+    summary_lines = [
+        "\n" + "="*50,
+        "Workflow Timing Summary",
+        "="*50
+    ]
+    for step, duration in step_timings.items():
+        summary_lines.append(f"- {step:<35}: {duration:.2f} seconds")
+    summary_lines.append("-"*50)
+    summary_lines.append(f"- {'Total Workflow Time':<35}: {total_workflow_time:.2f} seconds")
+    summary_lines.append("="*50)
+    
+    logging.info("\n".join(summary_lines))
+    logging.info("\n--- Dispute Resolution Complete ---")
