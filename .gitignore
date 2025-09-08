@@ -75,7 +75,7 @@ Thumbs.db
 # Custom Project Files
 # --------------------
 # Ignore the environment file in the config directory
-/config/.env
+#/config/.env
 
 # Ignore local data directories or databases
 /data/
@@ -83,7 +83,7 @@ Thumbs.db
 
 # --- Environment Variables ---
 # Ignore the sensitive environment file. This is the most important rule.
-/config/.env
+#/config/.env
 
 # --- Virtual Environment ---
 # Ignore the virtual environment folder.

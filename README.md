@@ -66,11 +66,9 @@ python -m src.workflows.dispute_resolution_workflow
 
 ## Deployment on OCI Compute VM
 
-These steps guide you through deploying the Streamlit client application on an OCI Compute Virtual Machine (VM).
+These steps guide you through deploying the Streamlit client application on an OCI Compute Virtual Machine (VM). This guide assumes you are using **Oracle Linux 9**.
 
 ### Step 1: Prepare Your Code for Deployment
-
-Your code needs to be accessible from the VM, preferably via a Git repository.
 
 1.  **Initialize a Git Repository:** If you haven't already, initialize Git in your project folder.
 
@@ -95,7 +93,7 @@ Your code needs to be accessible from the VM, preferably via a Git repository.
 
 2.  **Create Instance:**
     *   **Name:** Give it a descriptive name (e.g., `dispute-resolution-app-vm`).
-    *   **Image and Shape:** Choose an appropriate image (e.g., Oracle Linux or Ubuntu) and a shape (an "Always Free" eligible shape is a good start).
+    *   **Image and Shape:** Select **Oracle Linux 9**. Choose an appropriate shape (an "Always Free" eligible shape is a good start).
     *   **Networking:** Ensure it's being created in a VCN with a **Public Subnet** and select `Assign a public IPv4 address`.
     *   **Add SSH Keys:** Select `Generate a key pair for me` and **save both the private and public keys**. You will need the private key to connect.
 
@@ -104,58 +102,82 @@ Your code needs to be accessible from the VM, preferably via a Git repository.
 ### Step 3: Deploy the Application to the VM
 
 1.  **Connect to the VM via SSH:**
-    *   Use the `ssh` command with your private key and the VM's public IP. The default username for Oracle Linux is `opc`.
     ```bash
     # Replace 'path/to/your/private-key' and 'your-vm-public-ip'
     ssh -i path/to/your/private-key opc@your-vm-public-ip
     ```
 
 2.  **Install Git and Clone Your Repo:**
-    *   Once connected, install Git:
     ```bash
-    # For Oracle Linux / RHEL
     sudo dnf install git -y
-    ```
-    *   Clone your private repository:
-    ```bash
     git clone <your-private-repo-url.git>
     cd <your-repo-name> 
     ```
 
-3.  **Install Python and Create a Virtual Environment:**
-    *   Install the Python development tools, which include `venv`:
+3.  **Install Python 3.11:** The OCI SDK requires Python 3.10+. We will install Python 3.11.
     ```bash
-    # For Oracle Linux / RHEL
-    sudo dnf install python3-devel -y
+    # Install the Python 3.11 module stream
+    sudo dnf module install python311 -y
+    
+    # Install the development tools for Python 3.11
+    sudo dnf install python3.11-devel -y
     ```
-    *   Create and activate the virtual environment:
+
+4.  **Create a Virtual Environment:**
     ```bash
-    python3 -m venv .venv
+    # Create the virtual environment using python3.11
+    python3.11 -m venv .venv
+    
+    # Activate the new environment
     source .venv/bin/activate
     ```
 
-4.  **Install Dependencies:**
+5.  **Install Dependencies:**
     ```bash
     pip install -r requirements.txt
     ```
 
-5.  **Configure OCI Credentials:** The most secure method is using an **Instance Principal**. Your code should be configured to use this automatically when no API key config is found. No credential file is needed on the VM.
-
-### Step 4: Run and Access Your Application
-
-1.  **Open the Firewall Port:** You must open the Streamlit port (default 8501) in the OCI network security list.
-    *   In the OCI Console, navigate to your VM's Subnet -> Security List.
-    *   Click `Add Ingress Rules`.
-    *   **Source CIDR:** `0.0.0.0/0` (Allows access from any IP).
-    *   **IP Protocol:** `TCP`.
-    *   **Destination Port Range:** `8501`.
-    *   Click `Add Ingress Rules`.
-
-2.  **Run the Streamlit App on the VM:**
-    *   Back in your SSH session, inside the project directory with the virtual environment active, run the app:
+6.  **Create VM-Specific Environment File:** Create a `.env` file to tell the app to use the cloud knowledge base, not a local file.
     ```bash
-    streamlit run app_ui.py
+    echo 'USE_LOCAL_PDF="false"' > .env
     ```
 
-3.  **Access the App:**
-    *   Open a web browser on your local machine and navigate to: `http://<your-vm-public-ip>:8501`
+### Step 4: Configure Networking and Run the App
+
+We will run the app on port `8080` and forward traffic from the standard HTTP port `80` to it. This avoids corporate VPN issues.
+
+1.  **Configure OCI Security List:**
+    *   In the OCI Console, navigate to your VM's Subnet -> Security List.
+    *   Click `Add Ingress Rules`.
+    *   **Source CIDR:** `0.0.0.0/0`
+    *   **IP Protocol:** `TCP`
+    *   **Destination Port Range:** `80` (for public access).
+    *   Click `Add Ingress Rules`.
+
+2.  **Configure the VM's Firewall (`firewalld`):**
+    ```bash
+    # Open port 80 for incoming public traffic
+    sudo firewall-cmd --zone=public --add-port=80/tcp --permanent
+    
+    # Open port 8080 for the app to listen on internally
+    sudo firewall-cmd --zone=public --add-port=8080/tcp --permanent
+    
+    # Enable masquerading to allow traffic routing
+    sudo firewall-cmd --zone=public --add-masquerade --permanent
+    
+    # Add the rule to forward traffic from port 80 to 8080
+    sudo firewall-cmd --zone=public --add-forward-port=port=80:proto=tcp:toport=8080 --permanent
+    
+    # Reload the firewall to apply all rules
+    sudo firewall-cmd --reload
+    ```
+
+3.  **Run the Streamlit App on the VM:**
+    *   Inside your SSH session (with the virtual environment still active), run the app on port 8080.
+    ```bash
+    streamlit run app_ui.py --server.port 8080 --server.address=0.0.0.0
+    ```
+
+4.  **Access the App:**
+    *   Open a web browser and navigate to your VM's public IP address. **Do not add a port number.**
+    `http://<your-vm-public-ip>`
