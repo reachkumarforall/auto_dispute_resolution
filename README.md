@@ -137,14 +137,62 @@ These steps guide you through deploying the Streamlit client application on an O
     pip install -r requirements.txt
     ```
 
-6.  **Create VM-Specific Environment File:** Create a `.env` file to tell the app to use the cloud knowledge base, not a local file.
+### Step 4: Configure OCI Authentication on the VM
+
+The application code expects to find an OCI configuration file and a corresponding API key on the VM. This method is used when Instance Principals are not configured.
+
+**4.1. Generate a New OCI API Key (No Passphrase)**
+
+First, generate a new API key on your local machine that is **not** protected by a passphrase.
+
+1.  In the OCI Console, navigate to **Profile Icon** -> **Your Username** -> **API Keys**.
+2.  Click **Add API Key** and select **Generate API Key Pair**.
+3.  Click **Download Private Key** and save the `.pem` file to a secure location on your local machine (e.g., `C:\Users\your_user\.oci\`).
+4.  **Crucially, leave the "Passphrase" field blank.**
+5.  Click **Add**.
+6.  Update your **local** `~/.oci/config` file with the new `fingerprint` and ensure the `key_file` path points to the new `.pem` file you just downloaded.
+
+**4.2. Transfer Config and Key Files to the VM**
+
+Run these commands from your **local terminal** (e.g., Git Bash) to copy the necessary files to the VM.
+
+1.  **Create the `.oci` directory on the VM:**
     ```bash
-    echo 'USE_LOCAL_PDF="false"' > .env
+    ssh -i <path_to_your_ssh_key> opc@<vm_public_ip> "mkdir -p /home/opc/.oci"
     ```
 
-### Step 4: Configure Networking and Run the App
+2.  **Copy your local `config` file to the VM:**
+    ```bash
+    scp -i <path_to_your_ssh_key> C:/Users/your_user/.oci/config opc@<vm_public_ip>:/home/opc/.oci/
+    ```
 
-We will run the app on port `8080` and forward traffic from the standard HTTP port `80` to it. This avoids corporate VPN issues.
+3.  **Copy your new (no passphrase) `.pem` key file to the VM:**
+    ```bash
+    scp -i <path_to_your_ssh_key> C:/Users/your_user/.oci/oci_api_key.pem opc@<vm_public_ip>:/home/opc/.oci/
+    ```
+
+**4.3. Verify the `key_file` Path on the VM**
+
+The `config` file you copied contains a Windows-style path for the `key_file`. You must edit it on the VM to use the correct Linux path.
+
+1.  **Connect to the VM via SSH** and open the config file:
+    ```bash
+    ssh -i <path_to_your_ssh_key> opc@<vm_public_ip>
+    nano /home/opc/.oci/config
+    ```
+2.  **Change the `key_file` line** from the Windows path to the correct Linux path:
+    ```ini
+    # Change this:
+    key_file=C:\Users\your_user\.oci\oci_api_key.pem
+    
+    # To this:
+    key_file=/home/opc/.oci/oci_api_key.pem
+    ```
+3.  Save the file and exit (`Ctrl+X`, then `Y`, then `Enter`).
+
+### Step 5: Configure Networking and Run the App
+
+We will run the app on port `8080` and forward traffic from the standard HTTP port `80` to it.
 
 1.  **Configure OCI Security List:**
     *   In the OCI Console, navigate to your VM's Subnet -> Security List.
