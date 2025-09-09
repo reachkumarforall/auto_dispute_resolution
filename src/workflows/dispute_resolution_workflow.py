@@ -97,21 +97,30 @@ def resolve_dispute(user_dispute_prompt: str, approval_threshold: float = 500.0)
         json_end = transaction_data_str.rfind('}') + 1
         if json_start != -1 and json_end != 0:
             db_data = json.loads(transaction_data_str[json_start:json_end])
-            transactions = db_data.get("transactions", [])
+            transactions = db_data.get("transactions")
             
-            # --- MODIFIED: Handle both list and dict for transactions ---
-            if transactions:
-                # If it's a dictionary, treat it as a single transaction in a list
-                if isinstance(transactions, dict):
-                    transactions = [transactions]
+            # --- MODIFICATION START ---
+            # Handle cases where 'transactions' is a string-encoded JSON list/object
+            if isinstance(transactions, str):
+                transactions = json.loads(transactions)
+            
+            # Ensure transactions is a list for consistent processing
+            if transactions and not isinstance(transactions, list):
+                transactions = [transactions]
+
+            # Now safely access the first transaction
+            if transactions: # Check again in case it was an empty list
+                first_transaction = transactions[0]
+                # The item in the list might *still* be a string if it was a list of JSON strings
+                if isinstance(first_transaction, str):
+                    first_transaction = json.loads(first_transaction)
                 
-                # Now safely access the first transaction
-                if transactions: # Check again in case it was an empty dict originally
-                    dispute_amount = float(transactions[0].get("amount", 0))
-
-    except (json.JSONDecodeError, ValueError, TypeError):
+                dispute_amount = float(first_transaction.get("amount", 0))
+            # --- MODIFICATION END ---
+        
+    except (json.JSONDecodeError, ValueError, TypeError, AttributeError):
         dispute_amount = 0 # Default to 0 if parsing fails
-
+    
     # --- DEBUG: Print values before the human-in-the-loop check ---
     print("\n--- HUMAN-IN-THE-LOOP CHECK ---")
     print(f"Dispute Amount: {dispute_amount}")
